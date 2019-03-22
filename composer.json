@@ -1,0 +1,16 @@
+{
+    "name": "danog/merger",
+    "description": "Network merger",
+    "type": "project",
+    "require-dev": {
+        "amphp/socket": "^0.10.11"
+    },
+    "license": "AGPLv3",
+    "authors": [
+        {
+            "name": "Daniil Gentili",
+            "email": "daniil@daniil.it"
+        }
+    ],
+    "require": {}
+}
