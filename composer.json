@@ -3,14 +3,20 @@
     "description": "Network merger",
     "type": "project",
     "require-dev": {
-        "amphp/socket": "^0.10.11"
     },
     "license": "AGPLv3",
-    "authors": [
-        {
-            "name": "Daniil Gentili",
-            "email": "daniil@daniil.it"
+    "authors": [{
+        "name": "Daniil Gentili",
+        "email": "daniil@daniil.it"
+    }],
+    "require": {
+        "amphp/socket": "^0.10.11",
+        "ext-ds": "*"
+    },
+
+    "autoload": {
+        "psr-0": {
+            "danog\\Merger\\": "src/"
         }
-    ],
-    "require": {}
+    }
 }

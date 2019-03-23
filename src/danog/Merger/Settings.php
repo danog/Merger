@@ -33,7 +33,7 @@ class Settings
 
     public function setTunnelEndpoint($address, $port)
     {
-        $this->tunnelEndpoint = "tcp://$address:$port";
+        $this->tunnelEndpoint = "$address:$port";
     }
     public function getTunnelEndpoint()
     {

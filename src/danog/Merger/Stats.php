@@ -59,7 +59,7 @@ class Stats
             {
                 $this->instance->stopSending($this->id, $sent);
             }
-        }
+        };
     }
 
     private $speeds = [];
@@ -69,7 +69,7 @@ class Stats
     {
         $this->speeds[$ID] = new \Ds\Deque();
         $this->speeds[$ID]->allocate(self::MEAN_COUNT);
-        $this->speeds[$ID]->push(array_fill(0, $this->speeds[$ID]->capacity(), 0));
+        $this->speeds[$ID]->push(...array_fill(0, $this->speeds[$ID]->capacity(), 1000));
     }
     public function startSending($ID)
     {
@@ -96,18 +96,25 @@ class Stats
 
             $result[$last_key] = $ret;
         }
-
-        $per_bytes = (int) ($bytes / $sum);
+        
+        $per_bytes = $bytes / $sum;
 
         $sum = 0;
 
         foreach ($result as &$elem) {
-            $elem *= $per_bytes;
+            $elem = (int) ($elem * $per_bytes);
             $sum += $elem;
         }
 
         $result[$last_key] -= $sum - $bytes;
-
+        return $result;
+    }
+    public function getSpeeds($powerOf = 6)
+    {
+        $result = [];
+        foreach ($this->speeds as $ID => $speed) {
+            $result[$ID] = $speed->sum() / pow(10, $powerOf);
+        }
         return $result;
     }
 }
