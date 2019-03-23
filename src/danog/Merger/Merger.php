@@ -6,6 +6,7 @@ use function Amp\asyncCall;
 use function Amp\Socket\connect;
 use function Amp\Socket\listen;
 use Amp\Loop;
+use Amp\ByteStream\ResourceOutputStream;
 
 class Merger extends SharedMerger
 {
@@ -28,10 +29,11 @@ class Merger extends SharedMerger
     {
         $this->settings = $settings;
         $this->shared_stats = Stats::getInstance();
-        /*
+        $this->logger = new ResourceOutputStream(fopen('php://stdout', 'r+'));
+        
         Loop::repeat(1000, function () {
-            var_dump($this->shared_stats->getSpeeds());
-        });*/
+            $this->logger->write(json_encode($this->shared_stats->getSpeeds(), JSON_PRETTY_PRINT));
+        });
     }
     public function loop()
     {
@@ -44,6 +46,7 @@ class Merger extends SharedMerger
                 $context = (new ClientConnectContext())->withBindTo($bindto);
                 $this->writers[$bindto . '-' . $x] = yield connect('tcp://' . $this->settings->getTunnelEndpoint(), $context);
                 $this->stats[$bindto . '-' . $x] = Stats::getInstance($bindto . '-' . $x);
+                $this->pending_out_payloads[$bindto . '-' . $x] = new \SplQueue;
                 asyncCall([$this, 'handleSharedReads'], $bindto . '-' . $x, false);
             }
         }
@@ -56,13 +59,13 @@ class Merger extends SharedMerger
             $this->connections[$port] = $socket;
             $this->connection_out_seq_no[$port] = 0;
             $this->connection_in_seq_no[$port] = 0;
-            $this->pending_payloads[$port] = [];
+            $this->pending_in_payloads[$port] = [];
             asyncCall([$this, 'handleClientReads'], $port);
         };
     }
     public function handleClientReads($port)
     {
-        var_dumP("New $port");
+        var_dumP("New $port\n");
         $socket = $this->connections[$port];
 
         $socksInit = fopen('php://memory', 'r+');
@@ -130,6 +133,7 @@ class Merger extends SharedMerger
 
         yield $socket->write(chr(5) . chr(0) . chr(0) . chr(1) . pack('Vn', 0, 0));
 
+        var_Dump("================================ SENDING CONNECT ================================");
         yield $this->writers[key($this->writers)]->write(pack('VnCn', 0, $port, self::ACTION_CONNECT, $rport) . $payload);
 
         $buffer = $socksInit;
@@ -137,7 +141,7 @@ class Merger extends SharedMerger
             yield $this->commonWrite($port, $buffer);
         }
         while (null !== $chunk = yield $socket->read()) {
-            var_dumP("Sending $port => proxy");
+            //var_dumP("Sending $port => proxy\n");
             $pos = ftell($buffer);
             fwrite($buffer, $chunk);
             fseek($buffer, $pos);
