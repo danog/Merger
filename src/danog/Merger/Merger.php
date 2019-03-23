@@ -1,12 +1,27 @@
 <?php
+/**
+ * Merger client
+ *
+ * This file is part of Merger.
+ * Merger is free software: you can redistribute it and/or modify it under the terms of the GNU Affero General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+ * Merger is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU Affero General Public License for more details.
+ * You should have received a copy of the GNU General Public License along with Merger.
+ * If not, see <http://www.gnu.org/licenses/>.
+ *
+ * @author    Daniil Gentili <daniil@daniil.it>
+ * @copyright 2019 Daniil Gentili <daniil@daniil.it>
+ * @license   https://opensource.org/licenses/AGPL-3.0 AGPLv3
+ */
+
 namespace danog\Merger;
 
+use Amp\ByteStream\ResourceOutputStream;
+use Amp\Loop;
 use Amp\Socket\ClientConnectContext;
 use function Amp\asyncCall;
 use function Amp\Socket\connect;
 use function Amp\Socket\listen;
-use Amp\Loop;
-use Amp\ByteStream\ResourceOutputStream;
 
 class Merger extends SharedMerger
 {
@@ -30,7 +45,7 @@ class Merger extends SharedMerger
         $this->settings = $settings;
         $this->shared_stats = Stats::getInstance();
         $this->logger = new ResourceOutputStream(fopen('php://stdout', 'r+'));
-        
+
         Loop::repeat(1000, function () {
             $this->logger->write(json_encode($this->shared_stats->getSpeeds(), JSON_PRETTY_PRINT));
         });
