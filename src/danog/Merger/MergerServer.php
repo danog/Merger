@@ -41,9 +41,11 @@ class MergerServer extends SharedMerger
     {
         $this->settings = $settings;
         $this->shared_stats = Stats::getInstance();
-        $this->logger = new ResourceOutputStream(fopen('php://stdout', 'r+'));
+        $this->logger = new ResourceOutputStream(fopen('/dev/null', 'r+'));
+        $this->logger_periodic = new ResourceOutputStream(fopen('php://stdout', 'r+'));
+
         Loop::repeat(1000, function () {
-            $this->logger->write(json_encode($this->shared_stats->getSpeeds(), JSON_PRETTY_PRINT));
+            $this->logger_periodic->write(json_encode($this->shared_stats->getSpeeds(), JSON_PRETTY_PRINT));
         });
     }
     public function loop()
@@ -56,7 +58,7 @@ class MergerServer extends SharedMerger
 
         while ($socket = yield $server->accept()) {
             list($address, $port) = explode(':', stream_socket_get_name($socket->getResource(), true));
-            $this->writers[$address . '-' . $port] = $socket;
+            $this->writers[$address . '-' . $port] = new SharedSocket($socket);
             $this->stats[$address . '-' . $port] = Stats::getInstance($address . '-' . $port);
             $this->pending_out_payloads[$address . '-' . $port] = new \SplQueue;
 

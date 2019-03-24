@@ -44,10 +44,11 @@ class Merger extends SharedMerger
     {
         $this->settings = $settings;
         $this->shared_stats = Stats::getInstance();
-        $this->logger = new ResourceOutputStream(fopen('php://stdout', 'r+'));
+        $this->logger = new ResourceOutputStream(fopen('/dev/null', 'r+'));
+        $this->logger_periodic = new ResourceOutputStream(fopen('php://stdout', 'r+'));
 
         Loop::repeat(1000, function () {
-            $this->logger->write(json_encode($this->shared_stats->getSpeeds(), JSON_PRETTY_PRINT));
+            $this->logger_periodic->write(json_encode($this->shared_stats->getSpeeds(), JSON_PRETTY_PRINT));
         });
     }
     public function loop()
@@ -59,7 +60,7 @@ class Merger extends SharedMerger
         foreach ($this->settings->getConnectFromAddresses() as $bindto) {
             for ($x = 0; $x < $this->settings->getConnectionCount(); $x++) {
                 $context = (new ClientConnectContext())->withBindTo($bindto);
-                $this->writers[$bindto . '-' . $x] = yield connect('tcp://' . $this->settings->getTunnelEndpoint(), $context);
+                $this->writers[$bindto . '-' . $x] = new SharedSocket(yield connect('tcp://' . $this->settings->getTunnelEndpoint(), $context));
                 $this->stats[$bindto . '-' . $x] = Stats::getInstance($bindto . '-' . $x);
                 $this->pending_out_payloads[$bindto . '-' . $x] = new \SplQueue;
                 asyncCall([$this, 'handleSharedReads'], $bindto . '-' . $x, false);

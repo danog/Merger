@@ -85,22 +85,26 @@ class Stats
         $this->speeds[$ID] = new \Ds\Deque();
         $this->speeds[$ID]->allocate(self::MEAN_COUNT);
         $this->speeds[$ID]->push(...array_fill(0, $this->speeds[$ID]->capacity(), 1000));
-        $this->temp[$ID] = 0;
     }
     public function startSending($ID)
     {
         if (!isset($this->temp[$ID])) {
+            //echo "Start sending $ID\n";
             $this->temp[$ID] = microtime(true);
         } else {
+            echo "Postpone sending $ID\n";
             $this->needs_starting[$ID] = true;
         }
     }
     public function stopSending($ID, $sent)
     {
+        //echo "Stop sending $ID\n";
+        if (!isset($this->temp[$ID])) die('WUT');
         $this->speeds[$ID]->unshift(($sent * 8) / (microtime(true) - $this->temp[$ID]));
         $this->speeds[$ID]->pop();
         unset($this->temp[$ID]);
         if (isset($this->needs_starting[$ID])) {
+            echo "Re-start sending $ID\n";
             unset($this->needs_starting[$ID]);
             $this->startSending($ID);
         }

@@ -15,10 +15,10 @@
  */
 namespace danog\Merger;
 
-use function Amp\call;
-use function Amp\Socket\connect;
 use Amp\Deferred;
 use function Amp\asyncCall;
+use function Amp\call;
+use function Amp\Socket\connect;
 
 abstract class SharedMerger
 {
@@ -46,26 +46,29 @@ abstract class SharedMerger
     }
     public function commonWrite($port, $chunk)
     {
-        $deferred = new Deferred();
-        $promise = $deferred->promise();
+        $shared_deferred = new Deferred();
+        $promise = $shared_deferred->promise();
         $length = fstat($chunk)['size'] - ftell($chunk);
         foreach ($this->shared_stats->balance($length) as $id => $bytes) {
             $stats = $this->stats[$id];
             $seqno = $this->connection_out_seq_no[$port];
-            $this->connection_out_seq_no[$port] = ($this->connection_out_seq_no[$port]+1) % 0xFFFF;
+            $this->connection_out_seq_no[$port] = ($this->connection_out_seq_no[$port] + 1) % 0xFFFF;
 
-            $this->logger->write("Still sending $port seqno $seqno         length $bytes\n");
-            $stats->startSending();
             $this->writers[$id]->write(pack('Vnn', $bytes, $port, $seqno) . stream_get_contents($chunk, $bytes))->onResolve(
-                function ($error = null, $result = null) use ($stats, &$deferred, $port, $bytes) {
+                function ($error = null, $result = null) use ($stats, &$shared_deferred, $port, $bytes, $seqno) {
                     if ($error) {
                         throw $error;
                     }
-                    if ($deferred) {
-                        $deferred->resolve(true);
-                        $deferred = null;
-                    }
-                    $stats->stopSending($result);
+                    $this->logger->write("Still sending $port seqno $seqno         length $bytes\n");
+
+                    $stats->startSending();
+                    $result->onResolve(function ($error = null, $result = null) use ($stats, &$shared_deferred, $port, $bytes) {
+                        $stats->stopSending($result);
+                        if ($shared_deferred) {
+                            $shared_deferred->resolve(true);
+                            $shared_deferred = null;
+                        }
+                    });
                 }
             );
         }
@@ -77,15 +80,14 @@ abstract class SharedMerger
     public function handleSharedReads($id, $server)
     {
         $socket = $this->writers[$id];
-
-        $buffer = fopen('php://memory', 'r+');
+        $buffer = $socket->getBuffer();
 
         while (true) {
-            if (!yield $this->readMore($socket, $buffer, 6)) {
+            if (!yield $socket->read(6)) {
                 $this->logger->write("Breaking out of $id\n");
                 break;
             }
-            
+
             $length = unpack('V', stream_get_contents($buffer, 4))[1];
             $port = unpack('n', stream_get_contents($buffer, 2))[1];
 
@@ -93,7 +95,7 @@ abstract class SharedMerger
             if ($length === 0) {
                 $this->logger->write("Reading special action           $id\n");
 
-                yield $this->readMore($socket, $buffer, 1);
+                yield $socket->read(1);
                 $cmd = ord(stream_get_contents($buffer, 1));
                 var_dump($cmd);
                 if ($cmd === self::ACTION_DISCONNECT) {
@@ -103,24 +105,24 @@ abstract class SharedMerger
                     unset($this->connection_in_seq_no[$port]);
                     unset($this->pending_in_payloads[$port]);
                 } else if ($cmd === self::ACTION_CONNECT && $server) {
-                    yield $this->readMore($socket, $buffer, 3);
+                    yield $socket->read(3);
                     $rport = unpack('n', stream_get_contents($buffer, 2))[1];
                     $type = ord(stream_get_contents($buffer, 1));
                     switch ($type) {
                         case 0x03:
-                            yield $this->readMore($socket, $buffer, 1);
+                            yield $socket->read(1);
                             $toRead = ord(stream_get_contents($buffer, 1));
-                            yield $this->readMore($socket, $buffer, $toRead);
+                            yield $socket->read($toRead);
                             $host = stream_get_contents($buffer, $toRead);
                             break;
                         case 0x04:
                             $toRead = 16;
-                            yield $this->readMore($socket, $buffer, $toRead);
+                            yield $socket->read($toRead);
                             $host = '[' . inet_ntop(stream_get_contents($buffer, $toRead)) . ']';
                             break;
                         case 0x01:
                             $toRead = 4;
-                            yield $this->readMore($socket, $buffer, $toRead);
+                            yield $socket->read($toRead);
                             $host = inet_ntop(stream_get_contents($buffer, $toRead));
                             break;
                     }
@@ -151,7 +153,7 @@ abstract class SharedMerger
             } else {
                 $this->logger->write("Reading payload\n");
 
-                yield $this->readMore($socket, $buffer, $length + 2);
+                yield $socket->read($length + 2);
                 $seqno = unpack('n', stream_get_contents($buffer, 2))[1];
 
                 if (isset($this->connections[$port]) && $seqno === $this->connection_in_seq_no[$port]) {
