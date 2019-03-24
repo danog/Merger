@@ -36,10 +36,12 @@ abstract class SharedMerger
     public function readMoreAsync($socket, $buffer, $length)
     {
         $read = true;
-        while (fstat($buffer)['size'] - ($pos = ftell($buffer)) < $length && ($read = yield $socket->read()) !== null) {
+        $pos = ftell($buffer);
+        fseek($buffer, 0, SEEK_END);
+        while (fstat($buffer)['size'] - $pos < $length && ($read = yield $socket->read()) !== null) {
             fwrite($buffer, $read);
-            fseek($buffer, $pos);
         }
+        fseek($buffer, $pos);
         return $read !== null;
     }
     public function commonWrite($port, $chunk)
@@ -52,10 +54,10 @@ abstract class SharedMerger
             $seqno = $this->connection_out_seq_no[$port];
             $this->connection_out_seq_no[$port] = ($this->connection_out_seq_no[$port]+1) % 0xFFFF;
 
-            $this->logger->write("Still sending $port seqno $seqno\n");
+            $this->logger->write("Still sending $port seqno $seqno         length $bytes\n");
             $stats->startSending();
             $this->writers[$id]->write(pack('Vnn', $bytes, $port, $seqno) . stream_get_contents($chunk, $bytes))->onResolve(
-                function ($error = null, $result = null) use ($stats, &$deferred, $port) {
+                function ($error = null, $result = null) use ($stats, &$deferred, $port, $bytes) {
                     if ($error) {
                         throw $error;
                     }
@@ -67,6 +69,8 @@ abstract class SharedMerger
                 }
             );
         }
+        ftruncate($chunk, 0);
+        fseek($chunk, 0);
         return $promise;
     }
 
@@ -77,7 +81,6 @@ abstract class SharedMerger
         $buffer = fopen('php://memory', 'r+');
 
         while (true) {
-            $this->logger->write("Reading length\n");
             if (!yield $this->readMore($socket, $buffer, 6)) {
                 $this->logger->write("Breaking out of $id\n");
                 break;
@@ -86,6 +89,7 @@ abstract class SharedMerger
             $length = unpack('V', stream_get_contents($buffer, 4))[1];
             $port = unpack('n', stream_get_contents($buffer, 2))[1];
 
+            $this->logger->write("Reading length $length port $port\n");
             if ($length === 0) {
                 $this->logger->write("Reading special action           $id\n");
 
@@ -132,7 +136,6 @@ abstract class SharedMerger
                                 break;
                             }
                             $this->logger->write("Receiving proxy => $port seqno $seqno         init $id\n");
-                            //$this->logger->write($payload);
 
                             unset($this->pending_in_payloads[$port][$seqno]);
                             $this->connections[$port]->write($payload);
@@ -158,7 +161,6 @@ abstract class SharedMerger
                         die('Wrong length');
                     }
                     $this->connection_in_seq_no[$port]++;
-                    //$this->logger->write($data);
                     ksort($this->pending_in_payloads[$port]);
                     foreach ($this->pending_in_payloads[$port] as $seqno => $payload) {
                         if ($this->connection_in_seq_no[$port] !== $seqno) {
@@ -168,7 +170,6 @@ abstract class SharedMerger
                         unset($this->pending_in_payloads[$port][$seqno]);
                         $this->connections[$port]->write($payload);
                         $this->connection_in_seq_no[$port]++;
-                        //$this->logger->write($payload);
 
                     }
                 } else {
@@ -182,11 +183,9 @@ abstract class SharedMerger
             }
 
             if (fstat($buffer)['size'] > 10 * 1024 * 1024) {
-                $this->logger->write("=============== Resetting buffer\n");
-
                 $rest = stream_get_contents($buffer);
-                fclose($buffer);
-                $buffer = fopen('php://memory', 'r+');
+                ftruncate($buffer, strlen($rest));
+                fseek($buffer, 0);
                 fwrite($buffer, $rest);
                 fseek($buffer, 0);
             }

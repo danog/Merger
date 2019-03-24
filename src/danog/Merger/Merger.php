@@ -30,7 +30,7 @@ class Merger extends SharedMerger
     protected $connections = [];
     protected $stats = [];
     protected $shared_stats = [];
-    protected $connection_seqno = 0;
+    protected $connection_seqno = 3;
 
     const STATE_HEADER = 0;
     const STATE_DATA = 1;
@@ -151,20 +151,18 @@ class Merger extends SharedMerger
         var_Dump("================================ SENDING CONNECT ================================");
         yield $this->writers[key($this->writers)]->write(pack('VnCn', 0, $port, self::ACTION_CONNECT, $rport) . $payload);
 
-        $buffer = $socksInit;
-        if (fstat($buffer)['size'] - ftell($buffer)) {
+        $buffer = fopen('php://memory', 'r+');
+        if (fstat($socksInit)['size'] - ftell($socksInit)) {
+            fwrite($buffer, stream_get_contents($socksInit));
+            fseek($buffer, 0);
             yield $this->commonWrite($port, $buffer);
         }
+        fclose($socksInit);
         while (null !== $chunk = yield $socket->read()) {
             //var_dumP("Sending $port => proxy\n");
-            $pos = ftell($buffer);
             fwrite($buffer, $chunk);
-            fseek($buffer, $pos);
+            fseek($buffer, 0);
             yield $this->commonWrite($port, $buffer);
-
-            if (fstat($buffer)['size'] > 10 * 1024 * 1024) {
-                $buffer = fopen('php://memory', 'r+');
-            }
         }
         yield $this->writers[key($this->writers)]->write(pack('VnC', 0, $port, self::ACTION_DISCONNECT));
     }

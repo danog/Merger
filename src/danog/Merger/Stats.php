@@ -78,22 +78,32 @@ class Stats
 
     private $speeds = [];
     private $temp = [];
+    private $needs_starting = [];
 
     public function allocate($ID)
     {
         $this->speeds[$ID] = new \Ds\Deque();
         $this->speeds[$ID]->allocate(self::MEAN_COUNT);
         $this->speeds[$ID]->push(...array_fill(0, $this->speeds[$ID]->capacity(), 1000));
+        $this->temp[$ID] = 0;
     }
     public function startSending($ID)
     {
-        $this->temp[$ID] = microtime(true);
+        if (!isset($this->temp[$ID])) {
+            $this->temp[$ID] = microtime(true);
+        } else {
+            $this->needs_starting[$ID] = true;
+        }
     }
     public function stopSending($ID, $sent)
     {
-        $this->speeds[$ID]->push(($sent * 8) / (microtime(true) - $this->temp[$ID]));
+        $this->speeds[$ID]->unshift(($sent * 8) / (microtime(true) - $this->temp[$ID]));
         $this->speeds[$ID]->pop();
         unset($this->temp[$ID]);
+        if (isset($this->needs_starting[$ID])) {
+            unset($this->needs_starting[$ID]);
+            $this->startSending($ID);
+        }
     }
     public function getSpeed($ID, $powerOf = 6)
     {

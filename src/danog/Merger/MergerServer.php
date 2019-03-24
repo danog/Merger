@@ -71,17 +71,11 @@ class MergerServer extends SharedMerger
 
         $buffer = fopen('php://memory', 'r+');
         while (null !== $chunk = yield $socket->read()) {
-            $this->logger->write("Sending $port => proxy\n");
-
-            $pos = ftell($buffer);
+            //$this->logger->write("Sending $port => proxy\n");
             fwrite($buffer, $chunk);
-            fseek($buffer, $pos);
+            fseek($buffer, 0);
 
             yield $this->commonWrite($port, $buffer);
-
-            if (fstat($buffer)['size'] > 10 * 1024 * 1024) {
-                $buffer = fopen('php://memory', 'r+');
-            }
         }
         $this->logger->write("Closing $port\n");
         $this->writers[key($this->writers)]->write(pack('VnC', 0, $port, self::ACTION_DISCONNECT));
