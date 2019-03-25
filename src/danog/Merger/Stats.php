@@ -54,30 +54,21 @@ class Stats
                 $this->instance->allocate($id);
             }
             /**
-             * Start sending data
-             *
-             * @return void
-             */
-            public function startSending()
-            {
-                $this->instance->startSending($this->id);
-            }
-            /**
              * Stop sending data
              *
-             * @param int $sent Amount of data sent
+             * @param int $started When did the sending start
+             * @param int $sent    Amount of data sent
              * 
              * @return void
              */
-            public function stopSending($sent)
+            public function stopSending($started, $sent)
             {
-                $this->instance->stopSending($this->id, $sent);
+                $this->instance->stopSending($this->id, $started, $sent);
             }
         };
     }
 
     private $speeds = [];
-    private $temp = [];
     private $needs_starting = [];
 
     public function allocate($ID)
@@ -86,23 +77,11 @@ class Stats
         $this->speeds[$ID]->allocate(self::MEAN_COUNT);
         $this->speeds[$ID]->push(...array_fill(0, $this->speeds[$ID]->capacity(), 1000));
     }
-    public function startSending($ID)
+    public function stopSending($ID, $started, $sent)
     {
-        if (!isset($this->temp[$ID])) {
-            //echo "Start sending $ID\n";
-            $this->temp[$ID] = microtime(true);
-        } else {
-            echo "Postpone sending $ID\n";
-            $this->needs_starting[$ID] = true;
-        }
-    }
-    public function stopSending($ID, $sent)
-    {
-        //echo "Stop sending $ID\n";
-        if (!isset($this->temp[$ID])) die('WUT');
-        $this->speeds[$ID]->unshift(($sent * 8) / (microtime(true) - $this->temp[$ID]));
+        $time = microtime(true) - $started;
+        $this->speeds[$ID]->unshift(($sent * 8) / $time);
         $this->speeds[$ID]->pop();
-        unset($this->temp[$ID]);
         if (isset($this->needs_starting[$ID])) {
             echo "Re-start sending $ID\n";
             unset($this->needs_starting[$ID]);

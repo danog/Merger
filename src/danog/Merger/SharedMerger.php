@@ -50,25 +50,23 @@ abstract class SharedMerger
         $promise = $shared_deferred->promise();
         $length = fstat($chunk)['size'] - ftell($chunk);
         foreach ($this->shared_stats->balance($length) as $id => $bytes) {
+            if ($bytes === 0) continue;
             $stats = $this->stats[$id];
             $seqno = $this->connection_out_seq_no[$port];
             $this->connection_out_seq_no[$port] = ($this->connection_out_seq_no[$port] + 1) % 0xFFFF;
 
+            $this->logger->write("Still sending $port seqno $seqno         length $bytes\n");
+
             $this->writers[$id]->write(pack('Vnn', $bytes, $port, $seqno) . stream_get_contents($chunk, $bytes))->onResolve(
-                function ($error = null, $result = null) use ($stats, &$shared_deferred, $port, $bytes, $seqno) {
+                function ($error = null, $result = null) use ($stats, &$shared_deferred, $bytes) {
                     if ($error) {
                         throw $error;
                     }
-                    $this->logger->write("Still sending $port seqno $seqno         length $bytes\n");
-
-                    $stats->startSending();
-                    $result->onResolve(function ($error = null, $result = null) use ($stats, &$shared_deferred, $port, $bytes) {
-                        $stats->stopSending($result);
-                        if ($shared_deferred) {
-                            $shared_deferred->resolve(true);
-                            $shared_deferred = null;
-                        }
-                    });
+                    if ($shared_deferred) {
+                        $shared_deferred->resolve();
+                        $shared_deferred = null;
+                    }
+                    $stats->stopSending($result, $bytes);
                 }
             );
         }
@@ -93,11 +91,10 @@ abstract class SharedMerger
 
             $this->logger->write("Reading length $length port $port\n");
             if ($length === 0) {
-                $this->logger->write("Reading special action           $id\n");
-
                 yield $socket->read(1);
                 $cmd = ord(stream_get_contents($buffer, 1));
-                var_dump($cmd);
+                $this->logger->write("Reading special action $cmd           $id\n");
+
                 if ($cmd === self::ACTION_DISCONNECT) {
                     $this->connections[$port]->close();
                     unset($this->connections[$port]);
@@ -141,7 +138,7 @@ abstract class SharedMerger
 
                             unset($this->pending_in_payloads[$port][$seqno]);
                             $this->connections[$port]->write($payload);
-                            $this->connection_in_seq_no[$port]++;
+                            $this->connection_in_seq_no[$port] = ($this->connection_in_seq_no[$port] + 1) % 0xFFFF;
                         }
                         asyncCall([$this, 'handleClientReads'], $port);
                     } catch (\Exception $e) {
@@ -162,7 +159,7 @@ abstract class SharedMerger
                     if (strlen($d) != $length) {
                         die('Wrong length');
                     }
-                    $this->connection_in_seq_no[$port]++;
+                    $this->connection_in_seq_no[$port] = ($this->connection_in_seq_no[$port] + 1) % 0xFFFF;
                     ksort($this->pending_in_payloads[$port]);
                     foreach ($this->pending_in_payloads[$port] as $seqno => $payload) {
                         if ($this->connection_in_seq_no[$port] !== $seqno) {
@@ -171,7 +168,7 @@ abstract class SharedMerger
                         $this->logger->write("Receiving proxy => $port seqno $seqno         subloop $id\n");
                         unset($this->pending_in_payloads[$port][$seqno]);
                         $this->connections[$port]->write($payload);
-                        $this->connection_in_seq_no[$port]++;
+                        $this->connection_in_seq_no[$port] = ($this->connection_in_seq_no[$port] + 1) % 0xFFFF;
 
                     }
                 } else {
@@ -184,7 +181,7 @@ abstract class SharedMerger
                 }
             }
 
-            if (fstat($buffer)['size'] > 10 * 1024 * 1024) {
+            if (fstat($buffer)['size'] > 1 * 1024 * 1024) {
                 $rest = stream_get_contents($buffer);
                 ftruncate($buffer, strlen($rest));
                 fseek($buffer, 0);

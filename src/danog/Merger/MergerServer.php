@@ -39,9 +39,10 @@ class MergerServer extends SharedMerger
      */
     public function __construct($settings)
     {
+        set_error_handler(['\\danog\\Merger\\Exception', 'ExceptionErrorHandler']);
         $this->settings = $settings;
         $this->shared_stats = Stats::getInstance();
-        $this->logger = new ResourceOutputStream(fopen('/dev/null', 'r+'));
+        $this->logger = new ResourceOutputStream(fopen('php://stdout', 'r+'));
         $this->logger_periodic = new ResourceOutputStream(fopen('php://stdout', 'r+'));
 
         Loop::repeat(1000, function () {

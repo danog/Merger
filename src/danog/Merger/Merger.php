@@ -42,9 +42,10 @@ class Merger extends SharedMerger
      */
     public function __construct($settings)
     {
+        set_error_handler(['\\danog\\Merger\\Exception', 'ExceptionErrorHandler']);
         $this->settings = $settings;
         $this->shared_stats = Stats::getInstance();
-        $this->logger = new ResourceOutputStream(fopen('/dev/null', 'r+'));
+        $this->logger = new ResourceOutputStream(fopen('php://stdout', 'r+'));
         $this->logger_periodic = new ResourceOutputStream(fopen('php://stdout', 'r+'));
 
         Loop::repeat(1000, function () {
@@ -81,7 +82,7 @@ class Merger extends SharedMerger
     }
     public function handleClientReads($port)
     {
-        var_dumP("New $port\n");
+        $this->logger->write("New $port\n");
         $socket = $this->connections[$port];
 
         $socksInit = fopen('php://memory', 'r+');
@@ -120,9 +121,6 @@ class Merger extends SharedMerger
             $plen = ord(fread(1));
             yield $this->readMore($socket, $socksInit, $plen);
             $password = fread($socksInit, $plen);
-
-            var_dumP($username, $password);
-
         }
         $payload = fread($socksInit, 1);
         switch (ord($payload[0])) {
@@ -149,7 +147,7 @@ class Merger extends SharedMerger
 
         yield $socket->write(chr(5) . chr(0) . chr(0) . chr(1) . pack('Vn', 0, 0));
 
-        var_Dump("================================ SENDING CONNECT ================================");
+        $this->logger->write("================================ SENDING CONNECT ================================");
         yield $this->writers[key($this->writers)]->write(pack('VnCn', 0, $port, self::ACTION_CONNECT, $rport) . $payload);
 
         $buffer = fopen('php://memory', 'r+');
@@ -160,7 +158,7 @@ class Merger extends SharedMerger
         }
         fclose($socksInit);
         while (null !== $chunk = yield $socket->read()) {
-            //var_dumP("Sending $port => proxy\n");
+            //$this->logger->write("Sending $port => proxy\n");
             fwrite($buffer, $chunk);
             fseek($buffer, 0);
             yield $this->commonWrite($port, $buffer);
