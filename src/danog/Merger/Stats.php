@@ -77,7 +77,7 @@ class Stats
         Loop::repeat(1000, (function () {
             foreach ($this->speeds as $elem) {
                 $elem->pop();
-                $elem->unshift(0);
+                $elem->unshift(1);
             }
         })->bindTo($this, get_class($this)));
     }
