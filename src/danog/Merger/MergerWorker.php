@@ -41,13 +41,8 @@ class MergerWorker
     private $_connectionOutSeqNo = 0;
 
     private $_connectionInSeqNo = 0;
-    private $_pendingPayloads = [];
-
-    private $_connectionInSubSeqNo = [];
-    private $_pendingSubPayloads = [];
 
     private $_pause;
-    private $_minPauseSeqno = 0;
 
     /**
      * Construct
@@ -64,7 +59,6 @@ class MergerWorker
         $this->_logger = $logger;
         $this->_callback = $callback->bindTo($this, get_class($this));
         $this->_sharedStats = Stats::getInstance();
-        $this->_connectionInSubSeqNo = array_fill_keys(array_keys($this->_writers), 0);
     }
     public function loop($socket)
     {
@@ -82,14 +76,32 @@ class MergerWorker
 
         yield $socket->read($length + 2);
         $seqno = unpack('n', stream_get_contents($buffer, 2))[1];
-
+        $data = stream_get_contents($buffer, $length);
+        if ($this->_socket && $seqno === $this->_connectionInSeqNo) {
+            $this->_socket->write($data);
+            $this->_connectionInSeqNo = ($this->_connectionInSeqNo + 1) % 0xFFFF;
+            if ($this->_pause) {
+                $pause = $this->_pause;
+                $this->_pause = null;
+                $pause->resolve();
+            }    
+        } else {
+            $this->pauseDefer($seqno, $data);
+        }
+    }
+    public function pauseDefer(...$args)
+    {
+        return asyncCall([$this, 'pauseDeferAsync'], ...$args);
+    }
+    public function pauseDeferAsync($seqno, $data)
+    {
         while (!$this->_socket || $seqno !== $this->_connectionInSeqNo) {
             if (!$this->_pause) {
                 $this->_pause = new Deferred;
             }
             yield $this->_pause->promise();
         }
-        $this->_socket->write(stream_get_contents($buffer, $length));
+        $this->_socket->write($data);
         $this->_connectionInSeqNo = ($this->_connectionInSeqNo + 1) % 0xFFFF;
         if ($this->_pause) {
             $pause = $this->_pause;

@@ -19,6 +19,7 @@ use danog\Merger\MergerWorker;
 use danog\Merger\SequentialSocket;
 use danog\Merger\Settings;
 use function Amp\Socket\connect;
+use function Amp\asyncCall;
 
 /**
  * Abstract class shared merger
@@ -83,17 +84,19 @@ abstract class SharedMerger
                             $host = inet_ntop(stream_get_contents($buffer, $toRead));
                             break;
                     }
-                    $this->logger->write("Connecting to $host:$rport, {$port}\n");
-                    try {
-                        if (!isset($this->connections[$port])) {
-                            $this->connections[$port] = new MergerWorker($port, $loop_callback, $this->logger, $this->writers);
+                    asyncCall(function () use ($host, $rport, $port, $loop_callback) {
+                        $this->logger->write("Connecting to $host:$rport, {$port}\n");
+                        try {
+                            if (!isset($this->connections[$port])) {
+                                $this->connections[$port] = new MergerWorker($port, $loop_callback, $this->logger, $this->writers);
+                            }
+                            $this->connections[$port]->loop(new SequentialSocket(yield connect("tcp://$host:$rport")));
+                            $this->logger->write("Connected to $host:$rport, {$port}\n");
+                        } catch (\Exception $e) {
+                            $this->logger->write("Exception {$e->getMessage()} in $host:$rport, {$port}\n");
+                            $this->writers[key($this->writers)]->write(pack('VnC', 0, $port, Settings::ACTION_DISCONNECT));
                         }
-                        $this->connections[$port]->loop(new SequentialSocket(yield connect("tcp://$host:$rport")));
-                        $this->logger->write("Connected to $host:$rport, {$port}\n");
-                    } catch (\Exception $e) {
-                        $this->logger->write("Exception {$e->getMessage()} in $host:$rport, {$port}\n");
-                        $this->writers[key($this->writers)]->write(pack('VnC', 0, $port, Settings::ACTION_DISCONNECT));
-                    }
+                    });
                 } else {
                     throw new \Exception("Got unknown cmd $cmd");
                 }
