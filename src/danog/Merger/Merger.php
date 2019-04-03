@@ -62,7 +62,11 @@ class Merger extends SharedMerger
                 $context = (new ClientConnectContext())->withBindTo($bindto);
                 $id = $y++;
                 $this->writers[$id] = new SequentialSocket(yield connect('tcp://' . $this->settings->getTunnelEndpoint(), $context), $id);
-                $this->writers[$id]->write(pack('n', $id));
+                $this->writers[$id]->write($s = pack('n', $id));
+                yield $this->writers[$id]->read(2);
+                if (fread($this->writers[$id]->getBuffer(), 2) !== $s) {
+                    throw new Exception('Wrong reply');
+                }
                 ksort($this->writers);
                 asyncCall([$this, 'sharedLoop'], $id);
             }
@@ -158,7 +162,7 @@ class Merger extends SharedMerger
             while (yield $socket->read()) {
                 yield $this->commonWrite($socksInit);
             }
-            yield $this->_writers[key($this->_writers)]->write(pack('VnC', 0, $this->_port, Settings::ACTION_DISCONNECT));
+            $this->close();
         };
     }
 }

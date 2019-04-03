@@ -92,9 +92,6 @@ abstract class SharedMerger
                         $this->logger->write("Exception {$e->getMessage()} in $host:$rport, {$port}\n");
                         $this->writers[key($this->writers)]->write(pack('VnC', 0, $port, Settings::ACTION_DISCONNECT));
                     }
-                } elseif ($cmd === Settings::ACTION_SYNC) {
-                    $this->logger->write("SYNCING FOR {$port} on $writerId\n");
-                    $this->connections[$port]->sync($writerId);
                 } else {
                     throw new \Exception("Got unknown cmd $cmd");
                 }

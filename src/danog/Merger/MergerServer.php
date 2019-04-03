@@ -58,7 +58,6 @@ class MergerServer extends SharedMerger
         $server = listen($this->settings->getTunnelEndpoint());
 
         while ($socket = yield $server->accept()) {
-            //list($address, $port) = explode(':', stream_socket_get_name($socket->getResource(), true));
             $socket = new SequentialSocket($socket);
             yield $socket->read(2);
             $id = unpack('n', fread($socket->getBuffer(), 2))[1];
@@ -66,6 +65,7 @@ class MergerServer extends SharedMerger
             $this->writers[$id] = $socket;
             ksort($this->writers);
             asyncCall([$this, 'sharedLoop'], $id);
+            yield $socket->write(pack('n', $id));
         };
     }
 
@@ -76,14 +76,10 @@ class MergerServer extends SharedMerger
             $socket = $this->_socket;
 
             $buffer = $socket->getBuffer();
-            while (null !== $chunk = yield $socket->read()) {
-                fwrite($buffer, $chunk);
-                fseek($buffer, 0);
-
+            while (yield $socket->read()) {
                 yield $this->commonWrite($buffer);
             }
-            $this->_logger->write("Closing {$this->_port}\n");
-            yield $this->_writers[key($this->_writers)]->write(pack('VnC', 0, $this->_port, Settings::ACTION_DISCONNECT));
+            $this->close();
         };
     }
 }

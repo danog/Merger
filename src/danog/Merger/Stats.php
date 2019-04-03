@@ -72,15 +72,6 @@ class Stats
     }
 
     private $speeds = [];
-    public function __construct()
-    {
-        Loop::repeat(1000, (function () {
-            foreach ($this->speeds as $elem) {
-                $elem->unshift((1024*1024 * 8) / 1);
-                $elem->pop();        
-            }
-        })->bindTo($this, get_class($this)));
-    }
     public function allocate($ID)
     {
         $this->speeds[$ID] = new \Ds\Deque();
@@ -103,9 +94,16 @@ class Stats
         $sum = 0;
         $result = [];
 
+        $maxk = 0;
+        $maxv = 0;
         foreach ($this->speeds as $last_key => $elem) {
             $ret = $elem->sum(); 
             $sum += $ret;
+
+            if ($ret > $maxv) {
+                $maxv = $ret;
+                $maxk = $last_key;
+            }
 
             $result[$last_key] = $ret;
         }
@@ -114,15 +112,16 @@ class Stats
 
         $sum = 0;
 
-        foreach ($result as &$elem) {
+        foreach ($result as $key => &$elem) {
             $elem = (int) ($elem * $per_bytes);
             if (!$elem) {
+                $this->speeds[$key]->unshift(1000000);
+                $this->speeds[$key]->pop();
                 $elem += 2;
             }
             $sum += $elem;
         }
-
-        $result[$last_key] -= $sum - $bytes;
+        $result[$maxk] -= $sum - $bytes;
         return $result;
     }
     public function getSpeeds($powerOf = 6)
