@@ -26,7 +26,7 @@ class Stats
     public static function getInstance($id = null)
     {
         if (!self::$instance) {
-            self::$instance = new self;
+            self::$instance = new self();
         }
         if ($id === null) {
             return self::$instance;
@@ -72,6 +72,7 @@ class Stats
     }
 
     private $speeds = [];
+    private $settings;
     public function __construct()
     {
         Loop::repeat(1000, (function () {
@@ -80,6 +81,10 @@ class Stats
                 $elem->unshift(1);
             }
         })->bindTo($this, get_class($this)));
+    }
+    public function setSettings($settings)
+    {
+        $this->settings = $settings;
     }
     public function allocate($ID)
     {
@@ -126,7 +131,6 @@ class Stats
             if (!$elem) {
                 $this->speeds[$key]->pop();
                 $this->speeds[$key]->unshift(1000000);
-                $elem += 2;
             }
             $sum += $elem;
         }
@@ -136,8 +140,13 @@ class Stats
     public function getSpeeds($powerOf = 6)
     {
         $result = [];
-        foreach ($this->speeds as $ID => $speed) {
-            $result[$ID] = $speed->sum() / pow(10, $powerOf);
+        $y = 0;
+        foreach ($this->settings->getConnectFromAddresses() as $bindto) {
+            for ($x = 0; $x < $this->settings->getConnectionCount(); $x++) {
+                if (!isset($this->speeds[$y])) continue;
+                $result[$bindto.'-'.$y] = $this->speeds[$y]->sum() / pow(10, $powerOf);
+                $y++;
+            }
         }
         return $result;
     }

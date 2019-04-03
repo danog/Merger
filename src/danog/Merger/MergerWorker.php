@@ -84,7 +84,7 @@ class MergerWorker
                 $pause = $this->_pause;
                 $this->_pause = null;
                 $pause->resolve();
-            }    
+            }
         } else {
             $this->pauseDefer($seqno, $data);
         }
@@ -126,16 +126,16 @@ class MergerWorker
                 $this->_connectionOutSeqNo = ($this->_connectionOutSeqNo + 1) % 0xFFFF;
 
                 $this->_writers[$writerId]->writeSequential(pack('Vnn', $bytes, $this->_port, $seqno) . stream_get_contents($chunk, $bytes))->onResolve(
-                function ($error = null, $result = null) use (&$shared_deferred) {
-                    if ($error) {
-                        throw $error;
+                    function ($error = null, $result = null) use (&$shared_deferred) {
+                        if ($error) {
+                            throw $error;
+                        }
+                        if ($shared_deferred) {
+                            $shared_deferred->resolve();
+                            $shared_deferred = null;
+                        }
                     }
-                    if ($shared_deferred) {
-                        $shared_deferred->resolve();
-                        $shared_deferred = null;
-                    }
-                }
-            );
+                );
             }
             fseek($chunk, 0);
             ftruncate($chunk, 0);
