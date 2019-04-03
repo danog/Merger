@@ -72,6 +72,15 @@ class Stats
     }
 
     private $speeds = [];
+    public function __construct()
+    {
+        Loop::repeat(1000, (function () {
+            foreach ($this->speeds as $elem) {
+                $elem->pop();
+                $elem->unshift(0);
+            }
+        })->bindTo($this, get_class($this)));
+    }
     public function allocate($ID)
     {
         $this->speeds[$ID] = new \Ds\Deque();
@@ -81,8 +90,8 @@ class Stats
     public function stopSending($ID, $started, $sent)
     {
         $time = microtime(true) - $started;
-        $this->speeds[$ID]->unshift(($sent * 8) / $time);
         $this->speeds[$ID]->pop();
+        $this->speeds[$ID]->unshift(($sent * 8) / $time);
 
     }
     public function getSpeed($ID, $powerOf = 6)
@@ -115,8 +124,8 @@ class Stats
         foreach ($result as $key => &$elem) {
             $elem = (int) ($elem * $per_bytes);
             if (!$elem) {
-                $this->speeds[$key]->unshift(1000000);
                 $this->speeds[$key]->pop();
+                $this->speeds[$key]->unshift(1000000);
                 $elem += 2;
             }
             $sum += $elem;

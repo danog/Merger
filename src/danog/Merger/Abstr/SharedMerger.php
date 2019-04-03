@@ -18,8 +18,8 @@ namespace danog\Merger\Abstr;
 use danog\Merger\MergerWorker;
 use danog\Merger\SequentialSocket;
 use danog\Merger\Settings;
-use function Amp\Socket\connect;
 use function Amp\asyncCall;
+use function Amp\Socket\connect;
 
 /**
  * Abstract class shared merger
@@ -94,7 +94,7 @@ abstract class SharedMerger
                             $this->logger->write("Connected to $host:$rport, {$port}\n");
                         } catch (\Exception $e) {
                             $this->logger->write("Exception {$e->getMessage()} in $host:$rport, {$port}\n");
-                            $this->writers[key($this->writers)]->write(pack('VnC', 0, $port, Settings::ACTION_DISCONNECT));
+                            $this->writers[0]->write(pack('VnC', 0, $port, Settings::ACTION_DISCONNECT));
                         }
                     });
                 } else {

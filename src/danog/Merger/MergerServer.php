@@ -58,14 +58,18 @@ class MergerServer extends SharedMerger
         $server = listen($this->settings->getTunnelEndpoint());
 
         while ($socket = yield $server->accept()) {
-            $socket = new SequentialSocket($socket);
-            yield $socket->read(2);
-            $id = unpack('n', fread($socket->getBuffer(), 2))[1];
-            $socket->setId($id);
-            $this->writers[$id] = $socket;
-            ksort($this->writers);
-            asyncCall([$this, 'sharedLoop'], $id);
-            yield $socket->write(pack('n', $id));
+            try {
+                $socket = new SequentialSocket($socket);
+                yield $socket->read(2);
+                $id = unpack('n', fread($socket->getBuffer(), 2))[1];
+                $socket->setId($id);
+                $this->writers[$id] = $socket;
+                ksort($this->writers);
+                asyncCall([$this, 'sharedLoop'], $id);
+                yield $socket->write(pack('n', $id));
+            } catch (\Exception $e) {
+                $this->logger->write($e);
+            }
         };
     }
 

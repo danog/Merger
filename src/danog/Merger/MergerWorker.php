@@ -112,19 +112,20 @@ class MergerWorker
 
     public function commonWrite($chunk)
     {
-        $shared_deferred = new Deferred();
-        $promise = $shared_deferred->promise();
-        $length = fstat($chunk)['size'] - ftell($chunk);
-        foreach ($this->_sharedStats->balance($length) as $writerId => $bytes) {
-            if ($bytes <= 0) {
-                $this->_logger->write("Skipping $bytes\n");
-                continue;
-            }
+        try {
+            $shared_deferred = new Deferred();
+            $promise = $shared_deferred->promise();
+            $length = fstat($chunk)['size'] - ftell($chunk);
+            foreach ($this->_sharedStats->balance($length) as $writerId => $bytes) {
+                if ($bytes <= 0) {
+                    $this->_logger->write("Skipping $bytes\n");
+                    continue;
+                }
 
-            $seqno = $this->_connectionOutSeqNo;
-            $this->_connectionOutSeqNo = ($this->_connectionOutSeqNo + 1) % 0xFFFF;
+                $seqno = $this->_connectionOutSeqNo;
+                $this->_connectionOutSeqNo = ($this->_connectionOutSeqNo + 1) % 0xFFFF;
 
-            $this->_writers[$writerId]->writeSequential(pack('Vnn', $bytes, $this->_port, $seqno) . stream_get_contents($chunk, $bytes))->onResolve(
+                $this->_writers[$writerId]->writeSequential(pack('Vnn', $bytes, $this->_port, $seqno) . stream_get_contents($chunk, $bytes))->onResolve(
                 function ($error = null, $result = null) use (&$shared_deferred) {
                     if ($error) {
                         throw $error;
@@ -135,10 +136,13 @@ class MergerWorker
                     }
                 }
             );
+            }
+            fseek($chunk, 0);
+            ftruncate($chunk, 0);
+            return $promise;
+        } catch (\Exception $e) {
+            return $this->_logger->write($e);
         }
-        fseek($chunk, 0);
-        ftruncate($chunk, 0);
-        return $promise;
     }
     public function close()
     {
@@ -149,7 +153,7 @@ class MergerWorker
         $this->_socket = null;
         $this->_logger->write("Closing {$this->_port}\n");
         $socket->close();
-        $this->_writers[key($this->_writers)]->write(pack('VnC', 0, $this->_port, Settings::ACTION_DISCONNECT));
+        $this->_writers[0]->write(pack('VnC', 0, $this->_port, Settings::ACTION_DISCONNECT));
     }
 
     public function handleSharedRead($writerId, $buffer, $length)

@@ -86,50 +86,51 @@ class Merger extends SharedMerger
     public function getReadLoop(): callable
     {
         return function () {
-            $this->_logger->write("New {$this->_port}\n");
-            $socket = $this->_socket;
-            $socksInit = $socket->getBuffer();
+            try {
+                $this->_logger->write("New {$this->_port}\n");
+                $socket = $this->_socket;
+                $socksInit = $socket->getBuffer();
 
-            yield $socket->read(2);
+                yield $socket->read(2);
 
-            if (fread($socksInit, 1) !== chr(5)) {
-                throw new \Exception('Wrong socks5 init ');
-            }
-            yield $socket->write(chr(5));
-            $auth = null;
-            for ($x = 0; $x < ord(fread($socksInit, 1)); $x++) {
-                yield $socket->read(1);
-                $type = ord(fread($socksInit, 1));
-                if ($type === 0) {
-                    $auth = false;
-                } else if ($type === 2) {
-                    $auth = true;
+                if (fread($socksInit, 1) !== chr(5)) {
+                    throw new \Exception('Wrong socks5 init ');
                 }
-            }
-            if ($auth === null) {
-                throw new \Exception('No socks5 method');
-            }
-            $authchr = chr($auth ? 2 : 0);
-            yield $socket->write($authchr);
+                yield $socket->write(chr(5));
+                $auth = null;
+                for ($x = 0; $x < ord(fread($socksInit, 1)); $x++) {
+                    yield $socket->read(1);
+                    $type = ord(fread($socksInit, 1));
+                    if ($type === 0) {
+                        $auth = false;
+                    } elseif ($type === 2) {
+                        $auth = true;
+                    }
+                }
+                if ($auth === null) {
+                    throw new \Exception('No socks5 method');
+                }
+                $authchr = chr($auth ? 2 : 0);
+                yield $socket->write($authchr);
 
-            yield $socket->read(3);
-            if (fread($socksInit, 3) !== chr(5) . chr(1) . $authchr) {
-                throw new \Exception('Wrong socks5 ack');
-            }
-            if ($auth) {
-                yield $socket->read(1);
-                $ulen = ord(fread(1));
-                yield $socket->read($ulen);
-                $username = fread($socksInit, $ulen);
+                yield $socket->read(3);
+                if (fread($socksInit, 3) !== chr(5) . chr(1) . $authchr) {
+                    throw new \Exception('Wrong socks5 ack');
+                }
+                if ($auth) {
+                    yield $socket->read(1);
+                    $ulen = ord(fread(1));
+                    yield $socket->read($ulen);
+                    $username = fread($socksInit, $ulen);
 
+                    yield $socket->read(1);
+                    $plen = ord(fread(1));
+                    yield $socket->read($plen);
+                    $password = fread($socksInit, $plen);
+                }
                 yield $socket->read(1);
-                $plen = ord(fread(1));
-                yield $socket->read($plen);
-                $password = fread($socksInit, $plen);
-            }
-            yield $socket->read(1);
-            $payload = fread($socksInit, 1);
-            switch (ord($payload)) {
+                $payload = fread($socksInit, 1);
+                switch (ord($payload)) {
                 case 0x03:
                     yield $socket->read(1);
                     $payload .= fread($socksInit, 1);
@@ -148,20 +149,24 @@ class Merger extends SharedMerger
                     $payload .= fread($socksInit, $toRead);
                     break;
             }
-            yield $socket->read(2);
-            $rport = unpack('n', fread($socksInit, 2))[1];
+                yield $socket->read(2);
+                $rport = unpack('n', fread($socksInit, 2))[1];
 
-            yield $socket->write(chr(5) . chr(0) . chr(0) . chr(1) . pack('Vn', 0, 0));
+                yield $socket->write(chr(5) . chr(0) . chr(0) . chr(1) . pack('Vn', 0, 0));
 
-            $this->_logger->write("================================ SENDING CONNECT ================================\n");
-            yield $this->_writers[key($this->_writers)]->write(pack('VnCn', 0, $this->_port, Settings::ACTION_CONNECT, $rport) . $payload);
+                $this->_logger->write("================================ SENDING CONNECT ================================\n");
+                yield $this->_writers[0]->write(pack('VnCn', 0, $this->_port, Settings::ACTION_CONNECT, $rport) . $payload);
 
-            if (fstat($socksInit)['size'] - ftell($socksInit)) {
-                yield $this->commonWrite($socksInit);
+                if (fstat($socksInit)['size'] - ftell($socksInit)) {
+                    yield $this->commonWrite($socksInit);
+                }
+                while (yield $socket->read()) {
+                    yield $this->commonWrite($socksInit);
+                }
+            } catch (\Exception $e) {
+                $this->_logger->write($e);
             }
-            while (yield $socket->read()) {
-                yield $this->commonWrite($socksInit);
-            }
+
             $this->close();
         };
     }
