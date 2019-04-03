@@ -140,12 +140,20 @@ class Stats
     public function getSpeeds($powerOf = 6)
     {
         $result = [];
-        $y = 0;
-        foreach ($this->settings->getConnectFromAddresses() as $bindto) {
-            for ($x = 0; $x < $this->settings->getConnectionCount(); $x++) {
-                if (!isset($this->speeds[$y])) continue;
-                $result[$bindto.'-'.$y] = $this->speeds[$y]->sum() / pow(10, $powerOf);
-                $y++;
+        if ($this->settings) {
+            $y = 0;
+            foreach ($this->settings->getConnectFromAddresses() as $bindto) {
+                for ($x = 0; $x < $this->settings->getConnectionCount(); $x++) {
+                    if (!isset($this->speeds[$y])) {
+                        continue;
+                    }
+                    $result[$bindto.'-'.$y] = $this->speeds[$y]->sum() / pow(10, $powerOf);
+                    $y++;
+                }
+            }
+        } else {
+            foreach ($this->speeds as $ID => $speed) {
+                $result[$ID] = $speed->sum() / pow(10, $powerOf);
             }
         }
         return $result;
