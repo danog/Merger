@@ -17,6 +17,10 @@ namespace danog\Merger;
 
 class Settings
 {
+    const ACTION_CONNECT = 0;
+    const ACTION_DISCONNECT = 1;
+    const ACTION_SYNC = 2;
+
     /**
      * Addresses from which to connect
      *

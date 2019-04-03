@@ -16,17 +16,17 @@
 namespace danog\Merger;
 
 use function Amp\asyncCall;
-use function Amp\Socket\connect;
 use function Amp\Socket\listen;
 use Amp\Loop;
 use Amp\ByteStream\ResourceOutputStream;
+use danog\Merger\Abstr\SharedMerger;
 
 class MergerServer extends SharedMerger
 {
     protected $settings;
     protected $writers = [];
     protected $connections = [];
-    protected $stats = [];
+    protected $server = true;
 
     const STATE_HEADER = 0;
     const STATE_HEADER_CMD = 1;
@@ -58,30 +58,32 @@ class MergerServer extends SharedMerger
         $server = listen($this->settings->getTunnelEndpoint());
 
         while ($socket = yield $server->accept()) {
-            list($address, $port) = explode(':', stream_socket_get_name($socket->getResource(), true));
-            $this->writers[$address . '-' . $port] = new SharedSocket($socket);
-            $this->stats[$address . '-' . $port] = Stats::getInstance($address . '-' . $port);
-            $this->pending_out_payloads[$address . '-' . $port] = new \SplQueue;
-
-            asyncCall([$this, 'handleSharedReads'], $address . '-' . $port, true);
+            //list($address, $port) = explode(':', stream_socket_get_name($socket->getResource(), true));
+            $socket = new SequentialSocket($socket);
+            yield $socket->read(2);
+            $id = unpack('n', fread($socket->getBuffer(), 2))[1];
+            $socket->setId($id);
+            $this->writers[$id] = $socket;
+            ksort($this->writers);
+            asyncCall([$this, 'sharedLoop'], $id);
         };
     }
 
-    public function handleClientReads($port)
+    public function getReadLoop(): callable
     {
-        $this->logger->write("New $port\n");
-        $socket = $this->connections[$port];
+        return function () {
+            $this->_logger->write("New {$this->_port}\n");
+            $socket = $this->_socket;
 
-        $buffer = fopen('php://memory', 'r+');
-        while (null !== $chunk = yield $socket->read()) {
-            //$this->logger->write("Sending $port => proxy\n");
-            fwrite($buffer, $chunk);
-            fseek($buffer, 0);
+            $buffer = $socket->getBuffer();
+            while (null !== $chunk = yield $socket->read()) {
+                fwrite($buffer, $chunk);
+                fseek($buffer, 0);
 
-            yield $this->commonWrite($port, $buffer);
-        }
-        $this->logger->write("Closing $port\n");
-        $this->writers[key($this->writers)]->write(pack('VnC', 0, $port, self::ACTION_DISCONNECT));
+                yield $this->commonWrite($buffer);
+            }
+            $this->_logger->write("Closing {$this->_port}\n");
+            yield $this->_writers[key($this->_writers)]->write(pack('VnC', 0, $this->_port, Settings::ACTION_DISCONNECT));
+        };
     }
-
 }

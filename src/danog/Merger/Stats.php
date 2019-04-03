@@ -15,6 +15,9 @@
  */
 namespace danog\Merger;
 
+use Amp\Loop;
+
+
 class Stats
 {
     const MEAN_COUNT = 10;
@@ -69,8 +72,15 @@ class Stats
     }
 
     private $speeds = [];
-    private $needs_starting = [];
-
+    public function __construct()
+    {
+        Loop::repeat(1000, (function () {
+            foreach ($this->speeds as $elem) {
+                $elem->unshift((1024*1024 * 8) / 1);
+                $elem->pop();        
+            }
+        })->bindTo($this, get_class($this)));
+    }
     public function allocate($ID)
     {
         $this->speeds[$ID] = new \Ds\Deque();
@@ -82,11 +92,7 @@ class Stats
         $time = microtime(true) - $started;
         $this->speeds[$ID]->unshift(($sent * 8) / $time);
         $this->speeds[$ID]->pop();
-        if (isset($this->needs_starting[$ID])) {
-            echo "Re-start sending $ID\n";
-            unset($this->needs_starting[$ID]);
-            $this->startSending($ID);
-        }
+
     }
     public function getSpeed($ID, $powerOf = 6)
     {
@@ -110,6 +116,9 @@ class Stats
 
         foreach ($result as &$elem) {
             $elem = (int) ($elem * $per_bytes);
+            if (!$elem) {
+                $elem += 2;
+            }
             $sum += $elem;
         }
 
