@@ -15,10 +15,10 @@
  */
 namespace danog\Merger\Abstr;
 
-use function Amp\Socket\connect;
 use danog\Merger\MergerWorker;
 use danog\Merger\SequentialSocket;
 use danog\Merger\Settings;
+use function Amp\Socket\connect;
 
 /**
  * Abstract class shared merger
@@ -30,7 +30,7 @@ abstract class SharedMerger
      *
      * @return callable
      */
-    abstract public function getReadLoop(): callable;
+    abstract public function getReadLoop(): callable ;
 
     /**
      * Shared socket loop
@@ -43,7 +43,7 @@ abstract class SharedMerger
         $socket = $this->writers[$writerId];
         $buffer = $socket->getBuffer();
         $loop_callback = $this->getReadLoop();
-        
+
         while (true) {
             if (!yield $socket->read(6)) {
                 $this->logger->write("Breaking out of $writerId\n");
@@ -52,7 +52,7 @@ abstract class SharedMerger
 
             $length = unpack('V', stream_get_contents($buffer, 4))[1];
             $port = unpack('n', stream_get_contents($buffer, 2))[1];
-            
+
             if ($length === 0) {
                 yield $socket->read(1);
                 $cmd = ord(stream_get_contents($buffer, 1));
@@ -85,7 +85,9 @@ abstract class SharedMerger
                     }
                     $this->logger->write("Connecting to $host:$rport, {$port}\n");
                     try {
-                        $this->connections[$port] = new MergerWorker($port, $loop_callback, $this->logger, $this->writers);
+                        if (!isset($this->connections[$port])) {
+                            $this->connections[$port] = new MergerWorker($port, $loop_callback, $this->logger, $this->writers);
+                        }
                         $this->connections[$port]->loop(new SequentialSocket(yield connect("tcp://$host:$rport")));
                         $this->logger->write("Connected to $host:$rport, {$port}\n");
                     } catch (\Exception $e) {
@@ -96,6 +98,9 @@ abstract class SharedMerger
                     throw new \Exception("Got unknown cmd $cmd");
                 }
             } else {
+                if (!isset($this->connections[$port])) {
+                    $this->connections[$port] = new MergerWorker($port, $loop_callback, $this->logger, $this->writers);
+                }
                 yield $this->connections[$port]->handleSharedRead($writerId, $buffer, $length);
             }
 
